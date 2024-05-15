@@ -20,6 +20,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Description;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -32,6 +33,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -51,10 +53,13 @@ public class MultimodalApplication {
     ApplicationRunner chatClientDemo(ChatClient cc) {
         return args -> {
             var response = cc.call("""
+                        
                         Dear Singularity,
                         
-                        Please tell me a story about the wonderful Java and Spring developers in Amsterdam, 
-                        and do so in the style of famed children's author Dr. Seuss.
+                        Please tell me a story about the wonderful Java and 
+                        Spring developers in Amsterdam, 
+                        and do so in the style of famed children's 
+                        author Dr. Seuss.
                         
                         Cordially,
                         Josh
@@ -64,14 +69,16 @@ public class MultimodalApplication {
     }
 
 
-    @Bean
+    //    @Bean
     ApplicationRunner imageClientDemo(ImageClient imageClient) {
         return args -> {
             var reply = imageClient
                     .call(new ImagePrompt(
                             """ 
-                                    please render a picture showing an amazing Spring and Java developer in the city of Amsterdam, and
-                                    be sure to put a Spring Framework leaf on her laptop and not an Apple 'apple' logo. 
+                                    please render a picture showing an amazing Spring and Java 
+                                    developer in the city of Amsterdam, and
+                                    be sure to put a Spring Framework leaf on her 
+                                    laptop and not an Apple 'apple' logo. 
                                     """
                     ));
             var response = new UrlResource(reply.getResult().getOutput().getUrl());
@@ -82,7 +89,7 @@ public class MultimodalApplication {
     }
 
 
-    //    @Bean
+    //@Bean
     ApplicationRunner multimodal(ChatClient chatClient) {
         return args -> {
             var options = OpenAiChatOptions
@@ -111,19 +118,26 @@ public class MultimodalApplication {
 
         var config = PdfDocumentReaderConfig
                 .builder()
-                .withPageExtractedTextFormatter(new ExtractedTextFormatter.Builder().withNumberOfBottomTextLinesToDelete(3)
+                .withPageExtractedTextFormatter(new ExtractedTextFormatter.Builder()
+                        .withNumberOfBottomTextLinesToDelete(3)
                         .withNumberOfTopPagesToSkipBeforeDelete(1)
                         .build())
                 .withPagesPerDocument(1)
                 .build();
 
         var pdfReader = new PagePdfDocumentReader(pdfResource, config);
-        vectorStore.accept(tokenTextSplitter.apply(pdfReader.get()));
+        var splitData = tokenTextSplitter.apply(pdfReader.get());
+        vectorStore.accept(splitData);
 
     }
 
 
-    @Bean
+    // @Bean
+    ApplicationRunner carinaYesOrNot(ChatClient cc) {
+        return args -> System.out.println(cc.call("what is Washington State Carina ?"));
+    }
+
+    //     @Bean
     ApplicationRunner rag(TokenTextSplitter tokenTextSplitter,
                           VectorStore vectorStore,
                           JdbcClient jdbcClient,
@@ -145,8 +159,12 @@ public class MultimodalApplication {
                     {documents}
                                 
                     """;
-           // init(vectorStore, tokenTextSplitter, jdbcClient, pdf);
-            var message = "what should I know about the transition to consumer direct care network washington?";
+
+//            init(vectorStore, tokenTextSplitter, jdbcClient, pdf);
+            var message = """
+                    what should I know about the transition 
+                    to consumer direct care network washington?
+                    """;
             var listOfSimilarDocuments = vectorStore.similaritySearch(message);
             var documents = listOfSimilarDocuments
                     .stream()
@@ -159,13 +177,15 @@ public class MultimodalApplication {
             var aiResponse = chatClient.call(prompt);
             var content = aiResponse.getResult().getOutput().getContent();
             System.out.println("response: " + content);
+
+
         };
 
     }
 
 
     // first run  ` pdftoppm -png  pdf-1.pdf page `
-    //@Bean
+//    @Bean
     ApplicationRunner summarizeAPdf(ChatClient chatClient) {
         return args -> {
             var options = OpenAiChatOptions
@@ -184,12 +204,48 @@ public class MultimodalApplication {
                         }
                     });
             var response = chatClient.call(new Prompt(new UserMessage("what do the attached documents talk about? ", pdfPngs.toList()), options));
-            System.out.println(response);
+            System.out.println("summary: " + response);
 
 
         };
 
     }
 
+    record WeatherRequest(String city) {
+    }
+
+    record WeatherResponse(float temperatureInCelcius) {
+    }
+
+
+    static class WeatherFunction implements Function<WeatherRequest, WeatherResponse> {
+
+        @Override
+        public WeatherResponse apply(WeatherRequest weatherRequest) {
+
+            return new WeatherResponse(42.0f);
+        }
+    }
+
+    static final String WEATHER = "weather";
+
+    @Bean(WEATHER)
+    @Description("get the weather")
+    WeatherFunction weather () {
+        return new WeatherFunction();
+    }
+
+    @Bean
+    ApplicationRunner functions(ChatClient cc) {
+        return args -> {
+            var reply = cc.call(new Prompt("what's the current weather in Amsterdam? ",
+                    OpenAiChatOptions
+                            .builder()
+                            .withFunction(WEATHER)
+                            .build()));
+            System.out.println(reply.getResult().getOutput().getContent());
+
+        };
+    }
 
 }
